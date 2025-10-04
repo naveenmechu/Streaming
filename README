@@ -1,0 +1,83 @@
+# streaming-genrator — README
+
+This small project has two parts:
+- genrator_single.py — event generator (console and optional TCP socket).
+- Consumer.py — Spark Structured Streaming consumer that reads JSON from a socket and prints to console.
+
+Summary
+- The generator produces JSON events like:
+  {"id":"abc123","ts":"2025-10-04T...Z","value":12.345,"type":"click"}
+- By default the generator prints events to its console. Start it with `--socket` to open a TCP server and stream events to connected clients (eg. Spark).
+- The Consumer connects to a socket (default 127.0.0.1:9999), parses each line as JSON with a fixed schema, and writes rows to the console via Spark Structured Streaming.
+
+Files
+- genrator_single.py — generator implementation (asyncio). See flags below.
+- Consumer.py — Spark consumer using spark.readStream.format("socket").
+- .venv (optional) — Python virtual environment folder (not required but recommended).
+
+Is .venv required?
+- No. .venv is not required if your system Python has the required packages (pyspark) installed and spark-submit is available.
+- Recommended: use .venv to isolate packages (so you don't interfere with system packages).
+  - To create: `python -m venv .venv`
+  - Activate (PowerShell): `.venv\Scripts\Activate`
+  - Install required packages: `pip install pyspark` (or `pip install -r requirements.txt` if you create requirements)
+- If you prefer to run with `spark-submit`, pyspark can be provided by your Spark distribution and a venv is still optional.
+
+How the generator works (genrator_single.py)
+- make_event(): builds a dictionary with fields id, ts, value, type.
+- produce(rate, console, socket_server): main loop:
+  - interval = 4.0 / rate (so higher rate -> shorter interval). If rate=0 -> very fast small sleep.
+  - Creates JSON lines (json.dumps), prints to console when console enabled, and if socket_server is provided it calls socket_server.broadcast(line).
+- SimpleTCPServer:
+  - asyncio server that tracks connected clients (writer objects).
+  - handle_client() waits until client disconnects.
+  - broadcast(line): writes the line + newline to every connected client and drains.
+- CLI:
+  - --rate (events/sec), --no-console (disable printing), --socket (enable TCP server), --host, --port.
+
+How the consumer works (Consumer.py)
+- Builds a SparkSession (local[*]).
+- Opens a streaming socket source:
+  spark.readStream.format("socket").option("host","127.0.0.1").option("port",9999).load()
+- Each incoming line is a string column "value". The code uses from_json(col("value"), schema) to parse JSON and select data.* to get fields.
+- Writes parsed rows to console with writeStream.format("console").
+- Important: Spark tries to open the socket when the streaming query starts. If no server is listening you get Connection refused leading to StreamingQueryException.
+
+Steps to run (recommended order)
+1. Open two terminals (PowerShell recommended on Windows).
+2. Terminal A — start the generator socket server:
+   - With console + socket (default host/port 127.0.0.1:9999):
+     python "c:\Users\navee\Downloads\Pyspark project\streaming-genrator\genrator_single.py" --socket
+   - If you want generator to accept remote connections: `--host 0.0.0.0`
+3. Verify generator is listening (PowerShell):
+   Test-NetConnection -ComputerName 127.0.0.1 -Port 9999
+   netstat -ano | findstr :9999
+4. Terminal B — start the Spark consumer (after server is listening):
+   python "c:\Users\navee\Downloads\Pyspark project\streaming-genrator\Consumer.py"
+   or use spark-submit:
+   spark-submit "c:\Users\navee\Downloads\Pyspark project\streaming-genrator\Consumer.py"
+5. You should see parsed JSON rows appear in Consumer console. To stop: Ctrl+C in each terminal.
+
+Common troubleshooting
+- Connection refused:
+  - Ensure generator was started with `--socket`.
+  - Make sure generator printed "TCP server listening on ..." before starting Consumer.
+  - Check host/port match in both apps.
+  - Check firewall or another process using port 9999 (netstat & taskkill).
+- Consumer parses null rows:
+  - If incoming lines are not valid JSON, from_json returns null. You can temporarily print raw lines in Consumer to debug:
+    - In Consumer.py, write raw to console (raw.writeStream.format("console")...) before parsing.
+- Port in use:
+  - Find PID: netstat -ano | findstr :9999
+  - Kill if needed: taskkill /PID <pid> /F
+
+Minimal README usage examples
+- Run generator (socket + console):
+  python genrator_single.py --socket
+- Run consumer:
+  python Consumer.py
+
+Notes and suggestions
+- The socket source in Spark is for development/demo only (no recovery). Do not use in production.
+- If you want persistent streaming integration, consider Kafka (Spark has Kafka integration) instead of raw sockets.
+- If you want, I can add this README to the project or add a small requirements.txt and a sample run script — tell me which.
