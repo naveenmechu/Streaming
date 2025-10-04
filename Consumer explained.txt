@@ -1,0 +1,42 @@
+What the Consumer does (simple)
+
+Starts a local Spark session.
+Listens to a TCP socket (default 127.0.0.1:9999) as a streaming source.
+Each incoming line is treated as a text string column named "value".
+Tries to parse each "value" as JSON using a fixed schema (id, ts, value, type).
+Selects the parsed fields and prints them to the console continuously.
+Blocks (awaits) until you stop it (Ctrl+C).
+
+
+
+Step-by-step 
+
+Turn on Spark (SparkSession).
+Open the network pipe to 127.0.0.1:9999 and wait for lines.
+For each line: try to read it as JSON and pull out id, timestamp, number, type.
+Show the parsed row on the screen.
+Keep doing that forever until you stop it.
+Important lines in the code (what they mean)
+
+SparkSession.builder...getOrCreate(): start Spark.
+spark.readStream.format("socket").option("host",...).option("port",...).load(): open streaming socket source.
+from_json(col("value"), schema).alias("data")).select("data.*"): parse JSON and extract fields.
+parsed.writeStream.format("console").option("truncate", False).start(): print parsed rows to console.
+query.awaitTermination(): wait until the stream is stopped.
+How to run (order matters)
+
+Start the generator (socket mode) first: python genrator_single.py --socket
+Then start Consumer: python Consumer.py or spark-submit Consumer.py
+Common problems & fixes
+
+Connection refused: generator not running or wrong host/port. Start the generator first and confirm it listens.
+Parsed rows are null: incoming lines are not valid JSON. Temporarily print raw lines to debug.
+Port in use / firewall: check netstat and Test-NetConnection on Windows and free the port or adjust firewall.
+Quick debug tips
+
+Verify socket listening: Test-NetConnection -ComputerName 127.0.0.1 -Port 9999
+Temporarily print raw lines in Consumer by writing the raw DataFrame to console before parsing.
+Notes
+
+The socket source is for demos only (no recovery). For production use a durable broker (e.g., Kafka).
+You can run Consumer with system Python if pyspark is installed or use spark-submit if you have Spark installed.
