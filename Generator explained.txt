@@ -1,0 +1,29 @@
+What this generator does (very simple)
+
+Makes little fake events — each event has an id, a time, a number (value), and a type (click/view/purchase).
+It can do two things with each event:
+Print the event as a JSON line to the terminal (console).
+Send the event over the network to anyone who connects (TCP socket).
+It repeats forever at a speed you choose (events per second).
+
+
+How it works, step by step :
+
+pick a random id (like a short secret name).
+get the current time (when the event happened).
+choose a random value (a number) and a random type (click/view/purchase).
+put those pieces into a JSON string like {"id":"abc","ts":"...","value":12.3,"type":"click"}.
+if console is on → print the JSON line.
+if socket is enabled → send the JSON line to every connected client.
+wait a little bit depending on the rate, then do it again.
+Important knobs you can change
+
+--rate: how many events per second (higher = more events).
+--no-console: stop printing to the screen.
+--socket: turn on the TCP server so other programs (like Spark) can connect.
+--host and --port: which address and port the server listens on (default 127.0.0.1:9999).
+Quick example (what you’d do)
+
+Start generator with socket: python genrator_single.py --socket
+Start a consumer (another program) that connects to 127.0.0.1:9999 to receive the events.
+That’s it — it’s a tiny fake-event factory that prints and/or streams JSON lines.
